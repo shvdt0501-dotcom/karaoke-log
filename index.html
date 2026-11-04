@@ -76,6 +76,8 @@ canvas.graph{width:100%;height:170px;display:block;background:#1b1729;border-rad
 .ctrl{display:flex;justify-content:center;gap:28px}
 .ctrl button{background:none;font-size:24px;padding:2px 8px}
 #playBtn{font-size:30px}
+.ctrl{align-items:center}.ctrl .tg{font-size:20px;opacity:.3}.ctrl .tg.on{opacity:1}
+input[type=date],input[type=time],input[type=datetime-local]{-webkit-appearance:none;appearance:none;min-height:46px;text-align:left;display:block}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#1b1729;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:6}
 nav button{flex:1;background:none;padding:12px 0;color:var(--sub);font-size:12px;font-weight:600}
 nav button.active{color:var(--acc)}
@@ -142,7 +144,7 @@ nav button.active{color:var(--acc)}
   <div id="npTitle"></div><div id="npSub"></div>
   <input type="range" id="seek" min="0" max="1000" value="0">
   <div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div>
-  <div class="ctrl"><button id="prevBtn">⏮</button><button id="playBtn">▶</button><button id="nextBtn">⏭</button></div>
+  <div class="ctrl"><button id="shufBtn" class="tg">🔀</button><button id="prevBtn">⏮</button><button id="playBtn">▶</button><button id="nextBtn">⏭</button><button id="repBtn" class="tg">🔁</button></div>
 </div>
 <audio id="audio" preload="auto" playsinline></audio>
 <input type="file" id="importFile" hidden>
@@ -338,8 +340,8 @@ function audioDuration(blob){
 }
 async function importAudioFiles(files){
   const ids = [];
-  for (const f of files) {
-    const createdAt = f.lastModified || Date.now();
+  for (const [i, f] of files.entries()) {
+    const createdAt = (f.lastModified || Date.now()) + i;
     const id = createdAt + '-' + Math.random().toString(36).slice(2, 7);
     const title = f.name.replace(/\.[^.]+$/, '') || '取り込んだ録音';
     const mime = f.type || (/\.mp3$/i.test(f.name) ? 'audio/mpeg' : /\.wav$/i.test(f.name) ? 'audio/wav' : 'audio/mp4');
@@ -352,7 +354,24 @@ async function importAudioFiles(files){
   }
   await refresh();
   if (ids.length === 1) openEdit(ids[0], 'import');
-  else if (ids.length) { alert(`${ids.length}件取り込んだよ！\n日付はファイルの日付になっているので、違っていたら✏️から直してね`); switchTab('play'); }
+  else if (ids.length) openImportDate(ids);
+}
+function openImportDate(ids){
+  openSheet(`${sheetTop(`${ids.length}曲取り込んだよ！🎉`)}
+    <p class="hint" style="margin:-6px 0 12px">いつ歌った録音？（選んだ順に5分ずつずらして並べます）</p>
+    <div class="grid2">
+      <label>日付<input type="date" id="impDate" value="${dayKey(Date.now())}"></label>
+      <label>開始時刻<input type="time" id="impTime" value="20:00"></label>
+    </div>
+    <button class="btn pink" data-act="saveImportDate" data-ids="${ids.join(',')}">保存</button>
+    <button class="btn ghost" data-act="close">今日のままでOK</button>`);
+}
+// 録音を別の日付に移動（時刻はそのまま、朝5時前は翌日扱いのまま）
+function shiftToDate(ts, ds){
+  const o = new Date(ts);
+  let n = new Date(`${ds}T${pad(o.getHours())}:${pad(o.getMinutes())}:${pad(o.getSeconds())}`).getTime() + o.getMilliseconds();
+  if (o.getHours() < 5) n += 864e5;
+  return {createdAt:n, date:dayKey(n)};
 }
 $('#audioFile').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) importAudioFiles(fs); };
 const toLocalInput = ts => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -369,12 +388,28 @@ function singSong(k){
    再生（バックグラウンド・トリミング対応）
    ========================================================= */
 const audio = $('#audio');
-let queue = [], qi = -1, curURL, curMeta;
+let queue = [], order = [], pos = 0, curURL, curMeta;
+let shuffleOn = lsGet('shuffle') === '1', repeatMode = lsGet('repeat') || 'off';
+const shuffled = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+function buildOrder(start){
+  const idx = queue.map((_, i) => i);
+  if (shuffleOn) { order = [start, ...shuffled(idx.filter(i => i !== start))]; pos = 0; }
+  else { order = idx; pos = start; }
+}
+function setSub(){
+  if (!curMeta) return;
+  $('#npSub').textContent = [curMeta.artist, curMeta.score != null ? curMeta.score + '点' : '', dayLabel(curMeta.date), (pos+1)+'/'+queue.length].filter(Boolean).join(' · ');
+}
+function updateModeBtns(){
+  $('#shufBtn').classList.toggle('on', shuffleOn);
+  $('#repBtn').classList.toggle('on', repeatMode !== 'off');
+  $('#repBtn').textContent = repeatMode === 'one' ? '🔂' : '🔁';
+}
 const tStart = () => curMeta?.trimStart || 0;
 const tEnd = () => curMeta?.trimEnd || (isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (curMeta?.duration || 0));
-async function playQueue(list, i){ if (!list.length) return; queue = list; qi = Math.max(0, i); await loadCur(); }
+async function playQueue(list, i){ if (!list.length) return; queue = list; buildOrder(Math.max(0, i)); await loadCur(); }
 async function loadCur(){
-  curMeta = queue[qi]; if (!curMeta) return;
+  curMeta = queue[order[pos]]; if (!curMeta) return;
   const a = await get('audio', curMeta.id); if (!a) return;
   if (curURL) URL.revokeObjectURL(curURL);
   curURL = URL.createObjectURL(new Blob([a.data], {type:a.mime}));
@@ -383,21 +418,43 @@ async function loadCur(){
   audio.play().catch(()=>{});
   $('#player').hidden = false;
   $('#npTitle').textContent = (curMeta.fav ? '★ ' : '') + curMeta.title;
-  $('#npSub').textContent = [curMeta.artist, curMeta.score != null ? curMeta.score + '点' : '', dayLabel(curMeta.date), (qi+1)+'/'+queue.length].filter(Boolean).join(' · ');
+  setSub();
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({title:curMeta.title, artist:curMeta.artist || 'カラオケ', album:'カラオケ ' + dayLabel(curMeta.date)});
   }
   markPlaying();
 }
-function next(){ if (qi < queue.length-1) { qi++; loadCur(); } else { audio.pause(); audio.currentTime = tStart(); } }
-function prev(){ if (audio.currentTime - tStart() > 3 || qi === 0) audio.currentTime = tStart(); else { qi--; loadCur(); } }
-audio.addEventListener('ended', next);
+// auto=true は曲が終わったとき（1曲リピートはここだけ効く）
+function next(auto){
+  if (!queue.length) return;
+  if (auto === true && repeatMode === 'one') { audio.currentTime = tStart(); audio.play().catch(()=>{}); return; }
+  if (pos < order.length - 1) { pos++; loadCur(); }
+  else if (repeatMode !== 'off') { if (shuffleOn && order.length > 2) order = shuffled(order); pos = 0; loadCur(); }
+  else { audio.pause(); audio.currentTime = tStart(); }
+}
+function prev(){
+  if (audio.currentTime - tStart() > 3) { audio.currentTime = tStart(); return; }
+  if (pos > 0) { pos--; loadCur(); }
+  else if (repeatMode !== 'off' && order.length > 1) { pos = order.length - 1; loadCur(); }
+  else audio.currentTime = tStart();
+}
+audio.addEventListener('ended', () => next(true));
+$('#shufBtn').onclick = () => {
+  shuffleOn = !shuffleOn; lsSet('shuffle', shuffleOn ? '1' : '0');
+  if (queue.length) buildOrder(order[pos]);
+  updateModeBtns(); setSub();
+};
+$('#repBtn').onclick = () => {
+  repeatMode = {off:'all', all:'one', one:'off'}[repeatMode] || 'off'; lsSet('repeat', repeatMode);
+  updateModeBtns();
+};
+updateModeBtns();
 audio.addEventListener('play', () => $('#playBtn').textContent = '⏸');
 audio.addEventListener('pause', () => $('#playBtn').textContent = '▶');
 let seeking = false;
 audio.addEventListener('timeupdate', () => {
   if (!curMeta) return;
-  if (curMeta.trimEnd && audio.currentTime >= curMeta.trimEnd) { next(); return; }
+  if (curMeta.trimEnd && audio.currentTime >= curMeta.trimEnd) { next(true); return; }
   const s = tStart(), len = Math.max(0.1, tEnd() - s), pos = Math.max(0, audio.currentTime - s);
   $('#tCur').textContent = fmt(pos); $('#tDur').textContent = fmt(len);
   if (!seeking) $('#seek').value = Math.min(1000, pos / len * 1000);
@@ -676,6 +733,7 @@ async function saveSong(k){
 function openSession(date){
   const s = sessions[date] || {};
   openSheet(`${sheetTop(dayLabel(date))}
+    <label>日付（変えるとこの日の録音がまとめて移動します）<input type="date" id="sesDate" value="${date}"></label>
     <label>お店<input id="sesVenue" list="venueOptions" placeholder="例：まねきねこ 渋谷店" value="${esc(s.venue)}"></label>
     <label>一緒に行った人<input id="sesPeople" list="peopleOptions" placeholder="例：さき、ゆうと（ひとりカラオケなら空欄）" value="${esc(s.people)}"></label>
     <label>メモ<textarea id="sesMemo" placeholder="フリータイム、喉の調子など">${esc(s.memo)}</textarea></label>
@@ -844,8 +902,26 @@ document.addEventListener('click', async e => {
       await del('songs', d.key); closeSheet(); refresh(); break;
     }
     case 'saveSession': {
-      await put('sessions', {date:d.date, venue:$('#sesVenue').value.trim(), people:$('#sesPeople').value.trim(), memo:$('#sesMemo').value.trim()});
+      const nd = $('#sesDate').value || d.date;
+      const info = {venue:$('#sesVenue').value.trim(), people:$('#sesPeople').value.trim(), memo:$('#sesMemo').value.trim()};
+      if (nd !== d.date) {
+        const moved = getList('day:' + d.date).map(r => ({...r, ...shiftToDate(r.createdAt, nd)}));
+        await putMany('recordings', moved);
+        await del('sessions', d.date);
+        const ex = sessions[nd] || {};
+        await put('sessions', {date:nd, venue:info.venue || ex.venue || '', people:info.people || ex.people || '', memo:info.memo || ex.memo || ''});
+      } else {
+        await put('sessions', {date:d.date, ...info});
+      }
       closeSheet(); refresh(); break;
+    }
+    case 'saveImportDate': {
+      const ids = d.ids.split(','), ds = $('#impDate').value, tm = $('#impTime').value || '20:00';
+      if (!ds) { alert('日付を選んでね'); return; }
+      const base = new Date(`${ds}T${tm}`).getTime();
+      const moved = ids.map((id, i) => { const r = recs.find(x => x.id === id); const c = base + i * 300e3; return r && {...r, createdAt:c, date:dayKey(c)}; }).filter(Boolean);
+      await putMany('recordings', moved);
+      closeSheet(); await refresh(); switchTab('play'); break;
     }
     case 'addSong': {
       const title = $('#newSong').value.trim(); if (!title) return;
