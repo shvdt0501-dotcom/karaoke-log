@@ -79,6 +79,12 @@ canvas.graph{width:100%;height:170px;display:block;background:#1b1729;border-rad
 .ctrl{display:flex;justify-content:center;gap:28px}
 .ctrl button{background:none;font-size:24px;padding:2px 8px}
 #playBtn{font-size:30px}
+summary.dayh{cursor:pointer}
+.chev{display:inline-block;color:var(--sub);font-size:22px;line-height:1;transition:transform .2s;flex-shrink:0}
+details[open]>summary .chev{transform:rotate(90deg)}
+details.day:not([open])>summary.dayh{border-radius:16px}
+.foldbar{display:flex;justify-content:flex-end;gap:14px;margin:0 2px 8px}
+.foldbar button{background:none;color:var(--sub);font-size:12px;padding:4px 0}
 .ctrl{align-items:center}.ctrl .tg{font-size:20px;opacity:.3}.ctrl .tg.on{opacity:1}
 input[type=date],input[type=time],input[type=datetime-local]{-webkit-appearance:none;appearance:none;min-height:46px;text-align:left;display:block}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#1b1729;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:6}
@@ -502,23 +508,40 @@ function renderToday(){
     ? `<div class="day"><ul class="list" data-list="day:${k}">${list.map(recItem).join('')}</ul></div>`
     : '<p class="empty">まだ録音がないよ</p>';
 }
+// 折りたたみ状態を覚えておく
+let openDays = (() => { try { const v = JSON.parse(lsGet('openDays')); return Array.isArray(v) ? new Set(v) : null; } catch { return null; } })();
+const saveOpenDays = () => lsSet('openDays', JSON.stringify([...openDays]));
+document.addEventListener('toggle', e => {
+  const el = e.target;
+  if (!el.matches?.('details[data-fold]') || !openDays) return;
+  el.open ? openDays.add(el.dataset.fold) : openDays.delete(el.dataset.fold);
+  saveOpenDays();
+}, true);
 function renderPlaylists(){
   const favs = getList('fav');
   const days = [...new Set(recs.map(r => r.date))].sort().reverse();
-  let html = '';
-  if (favs.length) html += `<details class="day"><summary class="dayh">
-      <div><b>⭐ ベストテイク集</b><div class="meta">${favs.length}曲 · タップで開く</div></div>
-      <div class="btns"><button class="pill" data-playlist="fav">▶ 再生</button></div></summary>
+  // 初めては一番新しい日だけ開いておく
+  if (openDays === null) { openDays = new Set(days.slice(0, 1)); lsSet('knownDays', JSON.stringify(days)); saveOpenDays(); }
+  // 新しく増えた日は開いた状態で表示
+  let known; try { known = new Set(JSON.parse(lsGet('knownDays')) || []); } catch { known = new Set(); }
+  const fresh = days.filter(k => !known.has(k));
+  if (fresh.length) { fresh.forEach(k => { openDays.add(k); known.add(k); }); lsSet('knownDays', JSON.stringify([...known])); saveOpenDays(); }
+  const op = k => openDays.has(k) ? 'open' : '';
+  let html = days.length ? `<div class="foldbar"><button data-act="foldAll" data-open="1">すべて開く</button><button data-act="foldAll" data-open="0">すべて閉じる</button></div>` : '';
+  if (favs.length) html += `<details class="day" data-fold="fav" ${op('fav')}><summary class="dayh">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0"><span class="chev">›</span><div><b>⭐ ベストテイク集</b><div class="meta">${favs.length}曲</div></div></div>
+      <div class="btns"><button class="pill" data-playlist="fav">▶</button></div></summary>
       <ul class="list" data-list="fav">${favs.map(recItem).join('')}</ul></details>`;
   html += days.map(k => {
     const list = getList('day:' + k), s = sessions[k] || {};
     const total = list.reduce((a,r) => a + playDur(r), 0);
     const meta = [`${list.length}曲 · ${fmt(total)}`, s.venue ? '📍' + esc(s.venue) : '', s.people ? '👥' + esc(s.people) : ''].filter(Boolean).join(' ');
-    return `<div class="day"><div class="dayh">
-      <div style="min-width:0"><b>${dayLabel(k)}</b><div class="meta">${meta}</div>${s.memo ? `<div class="meta">📝 ${esc(s.memo)}</div>` : ''}</div>
+    return `<details class="day" data-fold="${k}" ${op(k)}><summary class="dayh">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0"><span class="chev">›</span>
+      <div style="min-width:0"><b>${dayLabel(k)}</b><div class="meta">${meta}</div>${s.memo ? `<div class="meta">📝 ${esc(s.memo)}</div>` : ''}</div></div>
       <div class="btns"><button class="ib" data-session="${k}">✏️</button><button class="ib" data-shareimg="${k}">📷</button>
-      <button class="pill" data-playlist="day:${k}">▶</button></div></div>
-      <ul class="list" data-list="day:${k}">${list.map(recItem).join('')}</ul></div>`;
+      <button class="pill" data-playlist="day:${k}">▶</button></div></summary>
+      <ul class="list" data-list="day:${k}">${list.map(recItem).join('')}</ul></details>`;
   }).join('');
   $('#playlists').innerHTML = html || '<p class="empty">録音するとここに日付ごとのプレイリストができるよ</p>';
 }
@@ -940,6 +963,7 @@ document.addEventListener('click', async e => {
     case 'export': exportBackup(); break;
     case 'import': $('#importFile').click(); break;
     case 'importAudio': $('#audioFile').click(); break;
+    case 'foldAll': $$('details[data-fold]').forEach(el => el.open = d.open === '1'); break;
   }
 });
 
