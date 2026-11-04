@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#15121f">
+<title>カラオケ記録</title>
+<style>
+:root{--bg:#15121f;--card:#221d33;--card2:#2a2340;--line:#342c4d;--text:#f3f0fa;--sub:#a59cc0;--acc:#ff4f9a;--acc2:#7c5cff;--gold:#ffc94d}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;font-size:15px}
+header{padding:calc(env(safe-area-inset-top) + 14px) 16px 8px}
+h1{margin:0;font-size:20px}
+h2{font-size:14px;color:var(--sub);margin:22px 0 8px}
+h3{margin:0 0 12px;font-size:18px}
+main{padding:0 16px 200px}
+.tab{display:none}.tab.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+label{display:block;font-size:12px;color:var(--sub);margin-bottom:10px}
+input,select,textarea{width:100%;margin-top:4px;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#181426;color:var(--text);font-size:16px;font-family:inherit}
+textarea{min-height:70px;resize:vertical}
+input[type=range]{padding:0;border:0;background:none;accent-color:var(--acc)}
+input[type=checkbox]{width:auto;margin:0 6px 0 0;accent-color:var(--gold);transform:scale(1.3)}
+button{font:inherit;color:inherit;border:0;cursor:pointer}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px}
+#timer{font-size:44px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;margin:6px 0 10px}
+.rec{width:100%;padding:16px;border-radius:14px;background:var(--acc);font-size:17px;font-weight:700}
+.rec.on{background:#333;color:var(--acc);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(255,79,154,.25)}}
+.hint{font-size:12px;color:var(--sub);margin:8px 0 0}
+.list{list-style:none;margin:0;padding:0}
+.item{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item .main{flex:1;min-width:0;cursor:pointer}
+.item .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .s{font-size:12px;color:var(--sub);margin-top:2px}
+.item .memo{font-size:12px;color:#cfc6e8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item.playing .t{color:var(--acc)}
+.star{color:var(--gold)}
+.score{color:var(--acc);font-weight:700;font-variant-numeric:tabular-nums;font-size:14px}
+.ib{background:transparent;color:var(--sub);font-size:17px;padding:6px}
+.ib.on{color:var(--gold)}
+.day{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-bottom:12px;overflow:hidden}
+.dayh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:var(--card2);list-style:none}
+.dayh::-webkit-details-marker{display:none}
+.dayh b{font-size:15px}.dayh .meta{font-size:12px;color:var(--sub);margin-top:2px}
+.dayh .btns{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.pill{background:var(--acc2);padding:7px 12px;border-radius:99px;font-size:13px;font-weight:600;white-space:nowrap}
+.btn{display:block;width:100%;padding:13px;border-radius:12px;background:var(--acc2);font-weight:700;margin-top:8px;text-align:center}
+.btn.pink{background:var(--acc)}.btn.ghost{background:#2f2747}.btn.danger{background:transparent;color:#ff7a7a;border:1px solid #5a2d3d}
+.row{display:flex;gap:8px;margin-bottom:8px}.row>*{margin-top:0}
+.row button{background:var(--acc2);padding:0 16px;border-radius:10px;white-space:nowrap}
+.seg{display:flex;background:#1b1729;border-radius:12px;padding:4px;margin-bottom:10px}
+.seg button{flex:1;padding:9px;border-radius:9px;background:none;color:var(--sub);font-weight:600}
+.seg button.active{background:var(--card2);color:var(--text)}
+.cnt{background:#2f2747;border-radius:99px;padding:3px 9px;font-size:12px;white-space:nowrap}
+.empty{color:var(--sub);text-align:center;padding:30px 0;list-style:none}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+.stat .v{font-size:24px;font-weight:700;margin-top:4px}.stat .k{font-size:12px;color:var(--sub)}
+.bars{display:flex;align-items:flex-end;gap:8px;height:130px;padding-top:10px}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:11px;color:var(--sub)}
+.bar i{display:block;width:100%;background:linear-gradient(var(--acc),var(--acc2));border-radius:6px 6px 2px 2px;min-height:2px;margin:3px 0}
+.rank{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.rank:last-child{border-bottom:0}.rank span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trimv{display:flex;justify-content:space-between;font-size:12px;color:var(--sub)}
+canvas.graph{width:100%;height:170px;display:block;background:#1b1729;border-radius:12px;margin:8px 0}
+#player{position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom) + 64px);background:var(--card2);border:1px solid var(--line);border-radius:16px;padding:10px 14px;box-shadow:0 6px 24px rgba(0,0,0,.4);z-index:5}
+#npTitle{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#npSub{font-size:12px;color:var(--sub)}
+#seek{margin:8px 0 2px}
+.times{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);font-variant-numeric:tabular-nums}
+.ctrl{display:flex;justify-content:center;gap:28px}
+.ctrl button{background:none;font-size:24px;padding:2px 8px}
+#playBtn{font-size:30px}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#1b1729;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{flex:1;background:none;padding:12px 0;color:var(--sub);font-size:12px;font-weight:600}
+nav button.active{color:var(--acc)}
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;display:flex;align-items:flex-end}
+#sheet[hidden]{display:none}
+#sheetBody{width:100%;max-height:90vh;overflow:auto;background:var(--bg);border-top:1px solid var(--line);border-radius:20px 20px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom) + 20px)}
+.sheetTop{display:flex;justify-content:space-between;align-items:flex-start}
+.close{background:none;color:var(--sub);font-size:22px;padding:0 4px}
+</style>
+</head>
+<body>
+<header><h1>🎤 カラオケ記録</h1></header>
+<main>
+  <!-- 録音 -->
+  <section id="tab-rec" class="tab active">
+    <div class="card">
+      <label>曲名<input id="recTitle" list="songOptions" placeholder="歌う曲" autocomplete="off"></label>
+      <div class="grid2">
+        <label>アーティスト<input id="recArtist" list="artistOptions" placeholder="任意" autocomplete="off"></label>
+        <label>キー<input id="recKey" placeholder="例：-2" autocomplete="off"></label>
+      </div>
+      <p class="hint" id="songHint" style="margin:-4px 0 6px"></p>
+      <div id="timer">00:00</div>
+      <button id="recBtn" class="rec">● 録音開始</button>
+      <p class="hint">録音中は画面を開いたままにしてね（画面ロックやアプリ切替で止まることがあります）</p>
+    </div>
+    <h2>今日の録音</h2>
+    <div id="todayBox"></div>
+  </section>
+
+  <!-- プレイリスト -->
+  <section id="tab-play" class="tab"><div id="playlists"></div></section>
+
+  <!-- 曲 -->
+  <section id="tab-songs" class="tab">
+    <div class="seg"><button data-smode="sung" class="active">歌った曲</button><button data-smode="want">歌いたい曲</button></div>
+    <button class="btn pink" data-act="suggest" style="margin:0 0 10px">🎲 今日のセトリを提案</button>
+    <div class="row">
+      <input id="songSearch" placeholder="🔍 検索">
+      <select id="songSort" style="width:auto">
+        <option value="last">最近順</option><option value="count">回数順</option><option value="best">点数順</option><option value="title">曲名順</option>
+      </select>
+    </div>
+    <div class="row">
+      <input id="newSong" placeholder="曲名を追加">
+      <input id="newArtist" list="artistOptions" placeholder="アーティスト">
+      <button data-act="addSong">追加</button>
+    </div>
+    <p class="hint" id="songCount"></p>
+    <div class="card" style="padding:0;margin-top:8px"><ul id="songList" class="list"></ul></div>
+  </section>
+
+  <!-- 統計 -->
+  <section id="tab-stats" class="tab"><div id="statsBox"></div></section>
+</main>
+
+<datalist id="songOptions"></datalist><datalist id="artistOptions"></datalist>
+<datalist id="venueOptions"></datalist><datalist id="peopleOptions"></datalist>
+
+<div id="player" hidden>
+  <div id="npTitle"></div><div id="npSub"></div>
+  <input type="range" id="seek" min="0" max="1000" value="0">
+  <div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div>
+  <div class="ctrl"><button id="prevBtn">⏮</button><button id="playBtn">▶</button><button id="nextBtn">⏭</button></div>
+</div>
+<audio id="audio" preload="auto" playsinline></audio>
+<input type="file" id="importFile" hidden>
+
+<div id="sheet" hidden><div id="sheetBody"></div></div>
+
+<nav>
+  <button data-tab="rec" class="active">🎙<br>録音</button>
+  <button data-tab="play">📅<br>プレイリスト</button>
+  <button data-tab="songs">📝<br>曲</button>
+  <button data-tab="stats">📊<br>統計</button>
+</nav>
+
+<script>
+/* =========================================================
+   ユーティリティ
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const fmt = sec => { sec = Math.max(0, Math.floor(sec || 0)); return Math.floor(sec/60) + ':' + pad(sec%60); };
+// 朝5時までは前日のカラオケとして扱う
+const dayKey = ts => { const d = new Date(ts - 5*3600e3); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); };
+const dayLabel = k => { const d = new Date(k+'T12:00'); return k.replace(/-/g,'/') + '（' + '日月火水木金土'[d.getDay()] + '）'; };
+const hm = ts => { const d = new Date(ts); return pad(d.getHours())+':'+pad(d.getMinutes()); };
+const daysSince = k => Math.floor((new Date(dayKey(Date.now())+'T12:00') - new Date(k+'T12:00')) / 864e5);
+const songKey = t => String(t || '').trim().toLowerCase();
+const playDur = r => Math.max(0, (r.trimEnd || r.duration || 0) - (r.trimStart || 0));
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), {href:url, download:name});
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+const MACHINES = ['', 'DAM', 'JOYSOUND', 'その他'];
+const machineOpts = v => MACHINES.map(m => `<option value="${m}" ${m === (v||'') ? 'selected' : ''}>${m || '機種'}</option>`).join('');
+
+/* =========================================================
+   IndexedDB
+   ========================================================= */
+let db;
+function openDB(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('karaoke-log', 2);
+    r.onupgradeneeded = () => {
+      const d = r.result, has = n => d.objectStoreNames.contains(n);
+      if (!has('recordings')) d.createObjectStore('recordings', {keyPath:'id'});
+      if (!has('audio')) d.createObjectStore('audio', {keyPath:'id'});
+      if (!has('songs')) d.createObjectStore('songs', {keyPath:'key'});
+      if (!has('sessions')) d.createObjectStore('sessions', {keyPath:'date'});
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+function tx(store, mode, fn){
+  return new Promise((res, rej) => {
+    const t = db.transaction(store, mode); let out;
+    const r = fn(t.objectStore(store));
+    if (r) r.onsuccess = () => out = r.result;
+    t.oncomplete = () => res(out);
+    t.onerror = () => rej(t.error);
+  });
+}
+const getAll = st => tx(st, 'readonly', s => s.getAll());
+const get = (st, k) => tx(st, 'readonly', s => s.get(k));
+const put = (st, v) => tx(st, 'readwrite', s => s.put(v));
+const putMany = (st, arr) => tx(st, 'readwrite', s => { arr.forEach(v => s.put(v)); });
+const del = (st, k) => tx(st, 'readwrite', s => s.delete(k));
+
+/* =========================================================
+   状態
+   ========================================================= */
+let recs = [], songs = [], sessions = {}, stats = {};
+let songMode = 'sung';
+
+async function refresh(){
+  recs = await getAll('recordings');
+  const stored = await getAll('songs');
+  sessions = Object.fromEntries((await getAll('sessions')).map(s => [s.date, s]));
+  // 曲ごとの集計（録音から毎回計算）
+  stats = {};
+  for (const r of recs) {
+    const k = songKey(r.title);
+    const st = stats[k] ||= {count:0, first:r.date, last:r.date, best:null, fav:false, artist:''};
+    st.count++;
+    if (r.date < st.first) st.first = r.date;
+    if (r.date > st.last) st.last = r.date;
+    if (r.score != null && (st.best == null || r.score > st.best)) st.best = r.score;
+    if (r.fav) st.fav = true;
+    if (r.artist) st.artist = r.artist;
+  }
+  // 録音はあるのに曲リストにない曲を補完
+  const map = Object.fromEntries(stored.map(s => [s.key, s]));
+  for (const r of recs) {
+    const k = songKey(r.title);
+    if (!map[k]) map[k] = {key:k, title:r.title, artist:r.artist || '', want:false, virtual:true};
+  }
+  songs = Object.values(map).map(s => (stats[s.key] && s.want) ? {...s, want:false} : s);
+  renderAll();
+}
+function getList(name){
+  if (name === 'fav') return recs.filter(r => r.fav).sort((a,b) => b.createdAt - a.createdAt);
+  if (name.startsWith('day:')) return recs.filter(r => r.date === name.slice(4)).sort((a,b) => a.createdAt - b.createdAt);
+  if (name.startsWith('song:')) return recs.filter(r => songKey(r.title) === name.slice(5)).sort((a,b) => a.createdAt - b.createdAt);
+  return [];
+}
+
+/* =========================================================
+   録音
+   ========================================================= */
+let rec, stream, chunks = [], t0 = 0, timerId, wakeLock;
+function pickMime(){
+  for (const m of ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg'])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  return '';
+}
+async function startRec(){
+  const title = $('#recTitle').value.trim();
+  if (!title) { alert('曲名を入れてね'); $('#recTitle').focus(); return; }
+  if (!window.MediaRecorder) { alert('このブラウザは録音に対応していません'); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
+  } catch(e) { alert('マイクが使えません：' + e.message); return; }
+  const mime = pickMime();
+  rec = new MediaRecorder(stream, mime ? {mimeType:mime} : undefined);
+  chunks = [];
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = saveRec;
+  rec.start(1000);
+  t0 = Date.now();
+  timerId = setInterval(() => $('#timer').textContent = fmt((Date.now()-t0)/1000).padStart(5,'0'), 250);
+  $('#recBtn').textContent = '■ 録音停止'; $('#recBtn').classList.add('on');
+  ['#recTitle','#recArtist','#recKey'].forEach(s => $(s).disabled = true);
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
+}
+function stopRec(){
+  rec._dur = (Date.now() - t0) / 1000;
+  rec.stop();
+  stream.getTracks().forEach(t => t.stop());
+  clearInterval(timerId);
+  try { wakeLock?.release(); } catch {} wakeLock = null;
+  $('#recBtn').textContent = '● 録音開始'; $('#recBtn').classList.remove('on');
+  ['#recTitle','#recArtist','#recKey'].forEach(s => $(s).disabled = false);
+}
+async function saveRec(){
+  const type = rec.mimeType || chunks[0]?.type || 'audio/webm';
+  const buf = await new Blob(chunks, {type}).arrayBuffer();
+  const title = $('#recTitle').value.trim(), artist = $('#recArtist').value.trim(), key = $('#recKey').value.trim();
+  const id = String(t0), date = dayKey(t0);
+  const song = await get('songs', songKey(title));
+  await put('audio', {id, data:buf, mime:type});
+  await put('recordings', {id, date, createdAt:t0, title, artist, key, mime:type, duration:rec._dur,
+    score:null, machine: song?.machine || lsGet('lastMachine') || '', memo:'', fav:false, trimStart:0, trimEnd:null});
+  await ensureSong(title, artist, key);
+  $('#recTitle').value = ''; $('#recArtist').value = ''; $('#recKey').value = '';
+  $('#timer').textContent = '00:00'; $('#songHint').textContent = '';
+  await refresh();
+  openEdit(id, true);
+}
+async function ensureSong(title, artist, key){
+  const k = songKey(title);
+  const s = await get('songs', k) || {key:k, title, artist:''};
+  s.want = false;
+  if (artist) s.artist = artist;
+  if (key) s.key = key;
+  delete s.virtual;
+  await put('songs', s);
+}
+$('#recBtn').onclick = () => (rec && rec.state === 'recording') ? stopRec() : startRec();
+$('#recTitle').addEventListener('input', () => {
+  const s = songs.find(x => x.key === songKey($('#recTitle').value));
+  const st = s && stats[s.key];
+  if (s?.artist && !$('#recArtist').value) $('#recArtist').value = s.artist;
+  if (s?.key && !$('#recKey').value) $('#recKey').value = s.key;
+  $('#songHint').textContent = s ? [
+    st ? `${st.count}回目` : 'はじめて！',
+    st?.best != null ? `ベスト ${st.best}` : '',
+    s.memo ? `📝 ${s.memo}` : ''
+  ].filter(Boolean).join(' · ') : '';
+});
+function singSong(k){
+  const s = songs.find(x => x.key === k); if (!s) return;
+  closeSheet();
+  $('#recTitle').value = s.title; $('#recArtist').value = s.artist || ''; $('#recKey').value = s.key || '';
+  $('#recTitle').dispatchEvent(new Event('input'));
+  switchTab('rec');
+}
+
+/* =========================================================
+   再生（バックグラウンド・トリミング対応）
+   ========================================================= */
+const audio = $('#audio');
+let queue = [], qi = -1, curURL, curMeta;
+const tStart = () => curMeta?.trimStart || 0;
+const tEnd = () => curMeta?.trimEnd || (isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (curMeta?.duration || 0));
+async function playQueue(list, i){ if (!list.length) return; queue = list; qi = Math.max(0, i); await loadCur(); }
+async function loadCur(){
+  curMeta = queue[qi]; if (!curMeta) return;
+  const a = await get('audio', curMeta.id); if (!a) return;
+  if (curURL) URL.revokeObjectURL(curURL);
+  curURL = URL.createObjectURL(new Blob([a.data], {type:a.mime}));
+  audio.src = curURL;
+  if (tStart()) audio.addEventListener('loadedmetadata', () => { audio.currentTime = tStart(); }, {once:true});
+  audio.play().catch(()=>{});
+  $('#player').hidden = false;
+  $('#npTitle').textContent = (curMeta.fav ? '★ ' : '') + curMeta.title;
+  $('#npSub').textContent = [curMeta.artist, curMeta.score != null ? curMeta.score + '点' : '', dayLabel(curMeta.date), (qi+1)+'/'+queue.length].filter(Boolean).join(' · ');
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({title:curMeta.title, artist:curMeta.artist || 'カラオケ', album:'カラオケ ' + dayLabel(curMeta.date)});
+  }
+  markPlaying();
+}
+function next(){ if (qi < queue.length-1) { qi++; loadCur(); } else { audio.pause(); audio.currentTime = tStart(); } }
+function prev(){ if (audio.currentTime - tStart() > 3 || qi === 0) audio.currentTime = tStart(); else { qi--; loadCur(); } }
+audio.addEventListener('ended', next);
+audio.addEventListener('play', () => $('#playBtn').textContent = '⏸');
+audio.addEventListener('pause', () => $('#playBtn').textContent = '▶');
+let seeking = false;
+audio.addEventListener('timeupdate', () => {
+  if (!curMeta) return;
+  if (curMeta.trimEnd && audio.currentTime >= curMeta.trimEnd) { next(); return; }
+  const s = tStart(), len = Math.max(0.1, tEnd() - s), pos = Math.max(0, audio.currentTime - s);
+  $('#tCur').textContent = fmt(pos); $('#tDur').textContent = fmt(len);
+  if (!seeking) $('#seek').value = Math.min(1000, pos / len * 1000);
+  if ('mediaSession' in navigator) {
+    try { navigator.mediaSession.setPositionState({duration:len, position:Math.min(pos, len), playbackRate:1}); } catch {}
+  }
+});
+$('#seek').addEventListener('input', () => seeking = true);
+$('#seek').addEventListener('change', () => { audio.currentTime = tStart() + $('#seek').value / 1000 * (tEnd() - tStart()); seeking = false; });
+$('#playBtn').onclick = () => audio.paused ? audio.play() : audio.pause();
+$('#nextBtn').onclick = next; $('#prevBtn').onclick = prev;
+if ('mediaSession' in navigator) {
+  const ms = navigator.mediaSession;
+  ms.setActionHandler('play', () => audio.play());
+  ms.setActionHandler('pause', () => audio.pause());
+  ms.setActionHandler('nexttrack', next);
+  ms.setActionHandler('previoustrack', prev);
+  try { ms.setActionHandler('seekto', e => { audio.currentTime = tStart() + e.seekTime; }); } catch {}
+}
+function markPlaying(){ $$('.item[data-id]').forEach(el => el.classList.toggle('playing', el.dataset.id === curMeta?.id)); }
+
+/* =========================================================
+   描画
+   ========================================================= */
+function recItem(r){
+  return `<li class="item" data-id="${r.id}">
+    <div class="main" data-play="${r.id}">
+      <div class="t">${r.fav ? '<span class="star">★</span> ' : ''}${esc(r.title)}</div>
+      <div class="s">${esc(r.artist || '—')} · ${hm(r.createdAt)} · ${fmt(playDur(r))}${r.key ? ' · キー' + esc(r.key) : ''}${r.machine ? ' · ' + esc(r.machine) : ''}</div>
+      ${r.memo ? `<div class="memo">📝 ${esc(r.memo)}</div>` : ''}
+    </div>
+    ${r.score != null ? `<span class="score">${r.score}</span>` : ''}
+    <button class="ib ${r.fav ? 'on' : ''}" data-fav="${r.id}">${r.fav ? '★' : '☆'}</button>
+    <button class="ib" data-edit="${r.id}">✏️</button></li>`;
+}
+function renderAll(){
+  renderToday(); renderPlaylists(); renderSongs(); renderStats(); renderDatalists(); markPlaying();
+}
+function renderToday(){
+  const k = dayKey(Date.now()), list = getList('day:' + k);
+  $('#todayBox').innerHTML = list.length
+    ? `<div class="day"><ul class="list" data-list="day:${k}">${list.map(recItem).join('')}</ul></div>`
+    : '<p class="empty">まだ録音がないよ</p>';
+}
+function renderPlaylists(){
+  const favs = getList('fav');
+  const days = [...new Set(recs.map(r => r.date))].sort().reverse();
+  let html = '';
+  if (favs.length) html += `<details class="day"><summary class="dayh">
+      <div><b>⭐ ベストテイク集</b><div class="meta">${favs.length}曲 · タップで開く</div></div>
+      <div class="btns"><button class="pill" data-playlist="fav">▶ 再生</button></div></summary>
+      <ul class="list" data-list="fav">${favs.map(recItem).join('')}</ul></details>`;
+  html += days.map(k => {
+    const list = getList('day:' + k), s = sessions[k] || {};
+    const total = list.reduce((a,r) => a + playDur(r), 0);
+    const meta = [`${list.length}曲 · ${fmt(total)}`, s.venue ? '📍' + esc(s.venue) : '', s.people ? '👥' + esc(s.people) : ''].filter(Boolean).join(' ');
+    return `<div class="day"><div class="dayh">
+      <div style="min-width:0"><b>${dayLabel(k)}</b><div class="meta">${meta}</div>${s.memo ? `<div class="meta">📝 ${esc(s.memo)}</div>` : ''}</div>
+      <div class="btns"><button class="ib" data-session="${k}">✏️</button><button class="ib" data-shareimg="${k}">📷</button>
+      <button class="pill" data-playlist="day:${k}">▶</button></div></div>
+      <ul class="list" data-list="day:${k}">${list.map(recItem).join('')}</ul></div>`;
+  }).join('');
+  $('#playlists').innerHTML = html || '<p class="empty">録音するとここに日付ごとのプレイリストができるよ</p>';
+}
+function renderSongs(){
+  $$('[data-smode]').forEach(b => b.classList.toggle('active', b.dataset.smode === songMode));
+  const q = $('#songSearch').value.trim().toLowerCase(), sort = $('#songSort').value;
+  const st = k => stats[k] || {};
+  let list = songs.filter(s => (songMode === 'want') === !!s.want)
+                  .filter(s => !q || (s.title + ' ' + (s.artist||'')).toLowerCase().includes(q));
+  const byTitle = (a,b) => a.title.localeCompare(b.title, 'ja');
+  list.sort(sort === 'count' ? (a,b) => (st(b.key).count||0) - (st(a.key).count||0) || byTitle(a,b)
+          : sort === 'best'  ? (a,b) => (st(b.key).best ?? -1) - (st(a.key).best ?? -1) || byTitle(a,b)
+          : sort === 'title' ? byTitle
+          : (a,b) => (st(b.key).last||'').localeCompare(st(a.key).last||'') || byTitle(a,b));
+  const n = songs.filter(s => (songMode === 'want') === !!s.want).length;
+  $('#songCount').textContent = songMode === 'want' ? `歌いたい曲：${n}曲（録音すると「歌った曲」に移動）` : `歌ったことある曲：${n}曲`;
+  $('#newSong').placeholder = songMode === 'want' ? '歌いたい曲を追加' : '歌った曲を追加';
+  $('#songList').innerHTML = list.length ? list.map(s => {
+    const x = st(s.key);
+    const sub = [s.artist || '—', s.key ? 'キー' + s.key : '', s.machine || '', x.last ? '最後 ' + x.last.slice(5).replace('-','/') : ''].filter(Boolean).join(' · ');
+    return `<li class="item"><div class="main" data-song="${esc(s.key)}">
+      <div class="t">${x.fav ? '<span class="star">★</span> ' : ''}${esc(s.title)}</div><div class="s">${esc(sub)}</div>
+      ${s.memo ? `<div class="memo">📝 ${esc(s.memo)}</div>` : ''}</div>
+      ${x.best != null ? `<span class="score">${x.best}</span>` : ''}
+      ${songMode === 'want' ? `<button class="ib" data-singsong="${esc(s.key)}">🎤</button>` : `<span class="cnt">${x.count ? x.count + '回' : '記録なし'}</span>`}
+    </li>`;
+  }).join('') : '<li class="empty">曲がありません</li>';
+}
+function renderDatalists(){
+  const opts = arr => [...new Set(arr.filter(Boolean))].map(v => `<option value="${esc(v)}">`).join('');
+  $('#songOptions').innerHTML = opts(songs.map(s => s.title));
+  $('#artistOptions').innerHTML = opts(songs.map(s => s.artist));
+  $('#venueOptions').innerHTML = opts(Object.values(sessions).map(s => s.venue));
+  $('#peopleOptions').innerHTML = opts(Object.values(sessions).flatMap(s => (s.people || '').split(/[、,，]\s*/)));
+}
+function renderStats(){
+  const days = new Set(recs.map(r => r.date));
+  const m = dayKey(Date.now()).slice(0,7);
+  const mRecs = recs.filter(r => r.date.startsWith(m));
+  const sc = recs.filter(r => r.score != null);
+  const avg = sc.length ? (sc.reduce((a,r) => a + r.score, 0) / sc.length).toFixed(2) : '—';
+  const best = sc.length ? Math.max(...sc.map(r => r.score)) : '—';
+  const total = recs.reduce((a,r) => a + playDur(r), 0);
+  const months = [], now = new Date(Date.now() - 5*3600e3);
+  for (let i = 5; i >= 0; i--) { const x = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push(x.getFullYear() + '-' + pad(x.getMonth()+1)); }
+  const mc = months.map(k => recs.filter(r => r.date.startsWith(k)).length), mx = Math.max(1, ...mc);
+  const tally = {}; recs.forEach(r => { if (r.artist) tally[r.artist] = (tally[r.artist] || 0) + 1; });
+  const topArtists = Object.entries(tally).sort((a,b) => b[1] - a[1]).slice(0,5);
+  const topSongs = songs.filter(s => stats[s.key]).sort((a,b) => stats[b.key].count - stats[a.key].count).slice(0,5);
+  const topScores = [...sc].sort((a,b) => b.score - a.score).slice(0,5);
+  const rank = (rows, empty) => rows.length ? rows.join('') : `<div class="hint">${empty}</div>`;
+  $('#statsBox').innerHTML = `
+    <h2 style="margin-top:4px">今月（${+m.slice(5)}月）</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">カラオケ回数</div><div class="v">${new Set(mRecs.map(r => r.date)).size}<small>回</small></div></div>
+      <div class="stat"><div class="k">歌った曲数</div><div class="v">${mRecs.length}<small>曲</small></div></div>
+    </div>
+    <h2>これまで</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">カラオケ回数</div><div class="v">${days.size}<small>回</small></div></div>
+      <div class="stat"><div class="k">録音数</div><div class="v">${recs.length}<small>曲</small></div></div>
+      <div class="stat"><div class="k">歌ったことある曲</div><div class="v">${songs.filter(s => !s.want).length}<small>曲</small></div></div>
+      <div class="stat"><div class="k">合計歌唱時間</div><div class="v" style="font-size:20px">${Math.floor(total/3600)}時間${Math.floor(total%3600/60)}分</div></div>
+      <div class="stat"><div class="k">平均点</div><div class="v">${avg}</div></div>
+      <div class="stat"><div class="k">最高点</div><div class="v" style="color:var(--acc)">${best}</div></div>
+    </div>
+    <h2>月ごとの録音数</h2>
+    <div class="card"><div class="bars">${months.map((k,i) => `<div class="bar"><span>${mc[i] || ''}</span><i style="height:${mc[i] / mx * 90}%"></i>${+k.slice(5)}月</div>`).join('')}</div></div>
+    <h2>よく歌うアーティスト</h2>
+    <div class="card" style="padding:4px 16px">${rank(topArtists.map(([a,n], i) => `<div class="rank"><span>${i+1}. ${esc(a)}</span><span>${n}回</span></div>`), 'アーティストを入れて録音すると表示されるよ')}</div>
+    <h2>よく歌う曲</h2>
+    <div class="card" style="padding:4px 16px">${rank(topSongs.map((s, i) => `<div class="rank" data-song="${esc(s.key)}"><span>${i+1}. ${esc(s.title)}</span><span>${stats[s.key].count}回</span></div>`), 'まだ記録がないよ')}</div>
+    <h2>ハイスコア</h2>
+    <div class="card" style="padding:4px 16px">${rank(topScores.map((r, i) => `<div class="rank"><span>${i+1}. ${esc(r.title)} <small style="color:var(--sub)">${r.date.slice(5).replace('-','/')}</small></span><span class="score">${r.score}</span></div>`), '点数を入れると表示されるよ')}</div>
+    <h2>データ</h2>
+    <div class="card">
+      <div class="hint" id="storageInfo" style="margin:0 0 6px"></div>
+      <button class="btn" data-act="export">💾 バックアップを書き出す</button>
+      <button class="btn ghost" data-act="import">📂 バックアップから復元</button>
+      <p class="hint">録音もまるごと1ファイルに保存されます。機種変更前や定期的に書き出して、ファイルアプリやクラウドに保管してね。</p>
+    </div>`;
+  navigator.storage?.estimate?.().then(e => {
+    const el = $('#storageInfo'); if (el && e) el.textContent = `使用容量：約${(e.usage / 1048576).toFixed(1)}MB`;
+  }).catch(()=>{});
+}
+
+/* =========================================================
+   シート（編集画面など）
+   ========================================================= */
+function openSheet(html){ $('#sheetBody').innerHTML = html; $('#sheet').hidden = false; $('#sheetBody').scrollTop = 0; }
+function closeSheet(){ $('#sheet').hidden = true; $('#sheetBody').innerHTML = ''; }
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
+const sheetTop = title => `<div class="sheetTop"><h3>${title}</h3><button class="close" data-act="close">✕</button></div>`;
+
+// 録音の編集
+function openEdit(id, afterRec){
+  const r = recs.find(x => x.id === id); if (!r) return;
+  const dur = r.duration || 0, ts = r.trimStart || 0, te = r.trimEnd || dur;
+  openSheet(`${sheetTop(afterRec ? '保存したよ！🎉' : '録音を編集')}
+    ${afterRec ? '<p class="hint" style="margin:-6px 0 12px">点数やメモを残しておく？</p>' : ''}
+    <label>曲名<input id="eTitle" list="songOptions" value="${esc(r.title)}"></label>
+    <label>アーティスト<input id="eArtist" list="artistOptions" value="${esc(r.artist)}"></label>
+    <div class="grid3">
+      <label>点数<input id="eScore" inputmode="decimal" placeholder="例：92.345" value="${r.score ?? ''}"></label>
+      <label>機種<select id="eMachine">${machineOpts(r.machine)}</select></label>
+      <label>キー<input id="eKey" placeholder="例：-2" value="${esc(r.key)}"></label>
+    </div>
+    <label>メモ<textarea id="eMemo" placeholder="サビの高音がきつい、など">${esc(r.memo)}</textarea></label>
+    <label style="display:flex;align-items:center;color:var(--text);font-size:15px"><input type="checkbox" id="eFav" ${r.fav ? 'checked' : ''}>⭐ ベストテイクにする</label>
+    <h2>トリミング（前後のカット）</h2>
+    <div class="card">
+      <div class="trimv"><span>開始</span><span id="tsV">${fmt(ts)}</span></div>
+      <input type="range" id="eTs" min="0" max="${dur}" step="0.5" value="${ts}">
+      <div class="trimv"><span>終了</span><span id="teV">${fmt(te)}</span></div>
+      <input type="range" id="eTe" min="0" max="${dur}" step="0.5" value="${te}">
+      <div class="grid2"><button class="btn ghost" data-act="trimPreview" data-id="${id}">▶ 開始から試聴</button>
+      <button class="btn ghost" data-act="trimEndPreview" data-id="${id}">▶ 終わり5秒</button></div>
+      <p class="hint">元の音声は消えないので、いつでも戻せます</p>
+    </div>
+    <button class="btn pink" data-act="saveEdit" data-id="${id}">保存</button>
+    ${afterRec ? `<button class="btn ghost" data-act="close">あとで</button>` : ''}
+    <div class="grid2"><button class="btn ghost" data-act="dl" data-id="${id}">⬇ 音声を保存</button>
+    <button class="btn danger" data-act="delRec" data-id="${id}">🗑 削除</button></div>`);
+  const upd = () => {
+    let s = +$('#eTs').value, e = +$('#eTe').value;
+    if (e < s + 1) { if (document.activeElement === $('#eTs')) $('#eTs').value = s = Math.max(0, e - 1); else $('#eTe').value = e = Math.min(dur, s + 1); }
+    $('#tsV').textContent = fmt(s); $('#teV').textContent = fmt(e);
+  };
+  $('#eTs').oninput = upd; $('#eTe').oninput = upd;
+}
+async function saveEdit(id){
+  const r = recs.find(x => x.id === id); if (!r) return;
+  const title = $('#eTitle').value.trim(); if (!title) { alert('曲名を入れてね'); return; }
+  const sc = parseFloat($('#eScore').value.replace(/[^\d.]/g, ''));
+  const dur = r.duration || 0, s = +$('#eTs').value, e = +$('#eTe').value;
+  const nr = {...r, title, artist:$('#eArtist').value.trim(), key:$('#eKey').value.trim(),
+    score: isNaN(sc) ? null : sc, machine:$('#eMachine').value, memo:$('#eMemo').value.trim(), fav:$('#eFav').checked,
+    trimStart: s < 0.3 ? 0 : s, trimEnd: e >= dur - 0.3 ? null : e};
+  await put('recordings', nr);
+  await ensureSong(nr.title, nr.artist, nr.key);
+  if (nr.machine) {
+    lsSet('lastMachine', nr.machine);
+    const song = await get('songs', songKey(nr.title));
+    if (song && !song.machine) { song.machine = nr.machine; await put('songs', song); }
+  }
+  if (curMeta?.id === id) Object.assign(curMeta, nr);
+  closeSheet(); refresh();
+}
+function previewTrim(id, fromEnd){
+  const r = recs.find(x => x.id === id); if (!r) return;
+  const s = +$('#eTs').value, e = +$('#eTe').value;
+  playQueue([{...r, trimStart: fromEnd ? Math.max(s, e - 5) : s, trimEnd: e}], 0);
+}
+
+// 曲の詳細
+function openSong(k){
+  const s = songs.find(x => x.key === k); if (!s) return;
+  const st = stats[k], list = getList('song:' + k), scored = list.filter(r => r.score != null);
+  openSheet(`${sheetTop(esc(s.title))}
+    <p class="hint" style="margin:-6px 0 12px">${st ? `${st.count}回録音 · 初めて ${st.first.replace(/-/g,'/')} · 最後 ${st.last.replace(/-/g,'/')}` : (s.want ? '歌いたい曲' : 'まだ録音なし')}${st?.best != null ? ` · ベスト <span class="score">${st.best}</span>` : ''}</p>
+    ${scored.length ? `<h2 style="margin-top:0">点数の推移</h2><canvas class="graph" id="graph"></canvas>` : ''}
+    <label>アーティスト<input id="sArtist" list="artistOptions" value="${esc(s.artist)}"></label>
+    <div class="grid2">
+      <label>自分に合うキー<input id="sKey" placeholder="例：-2、原曲" value="${esc(s.key)}"></label>
+      <label>よく使う機種<select id="sMachine">${machineOpts(s.machine)}</select></label>
+    </div>
+    <label>メモ<textarea id="sMemo" placeholder="原曲キーだと高い、2番から入る、など">${esc(s.memo)}</textarea></label>
+    <button class="btn" data-act="saveSong" data-key="${esc(k)}">保存</button>
+    <button class="btn pink" data-singsong="${esc(k)}">🎤 この曲を歌う</button>
+    ${!st ? `<button class="btn ghost" data-act="toggleWant" data-key="${esc(k)}">${s.want ? '「歌った曲」に移動' : '「歌いたい曲」に移動'}</button>` : ''}
+    ${list.length ? `<h2>録音（${list.length}）</h2><div class="day"><ul class="list" data-list="song:${esc(k)}">${list.map(recItem).join('')}</ul></div>` : ''}
+    <button class="btn danger" data-act="delSong" data-key="${esc(k)}">リストから削除</button>`);
+  if (scored.length) drawGraph($('#graph'), scored);
+  markPlaying();
+}
+function drawGraph(cv, pts){
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const c = cv.getContext('2d'); c.scale(dpr, dpr);
+  const ys = pts.map(p => p.score);
+  let min = Math.min(...ys), max = Math.max(...ys);
+  if (max - min < 4) { const mid = (max + min) / 2; min = mid - 2; max = mid + 2; }
+  min = Math.floor(min); max = Math.ceil(max);
+  const L = 36, R = 14, T = 16, B = 24, pw = W - L - R, ph = H - T - B;
+  const X = i => L + (pts.length === 1 ? pw / 2 : i / (pts.length - 1) * pw);
+  const Y = v => T + (1 - (v - min) / (max - min)) * ph;
+  c.font = '11px -apple-system,sans-serif'; c.fillStyle = '#a59cc0'; c.strokeStyle = '#342c4d'; c.lineWidth = 1;
+  for (let i = 0; i <= 3; i++) {
+    const v = min + (max - min) * i / 3, y = Y(v);
+    c.beginPath(); c.moveTo(L, y); c.lineTo(W - R, y); c.stroke();
+    c.textAlign = 'right'; c.fillText(v.toFixed(0), L - 6, y + 4);
+  }
+  c.textAlign = 'center';
+  c.fillText(pts[0].date.slice(5).replace('-','/'), X(0), H - 6);
+  if (pts.length > 1) c.fillText(pts.at(-1).date.slice(5).replace('-','/'), X(pts.length - 1), H - 6);
+  c.strokeStyle = '#ff4f9a'; c.lineWidth = 2.5; c.beginPath();
+  pts.forEach((p, i) => i ? c.lineTo(X(i), Y(p.score)) : c.moveTo(X(i), Y(p.score))); c.stroke();
+  const bi = ys.indexOf(Math.max(...ys));
+  pts.forEach((p, i) => { c.fillStyle = i === bi ? '#ffc94d' : '#ff4f9a'; c.beginPath(); c.arc(X(i), Y(p.score), i === bi ? 5 : 3.5, 0, Math.PI * 2); c.fill(); });
+  c.fillStyle = '#ffc94d'; c.fillText(String(ys[bi]), X(bi), Y(ys[bi]) - 9);
+}
+async function saveSong(k){
+  const base = await get('songs', k) || songs.find(x => x.key === k);
+  const s = {...base, artist:$('#sArtist').value.trim(), key:$('#sKey').value.trim(), machine:$('#sMachine').value, memo:$('#sMemo').value.trim()};
+  delete s.virtual;
+  await put('songs', s); closeSheet(); refresh();
+}
+
+// 日付（カラオケ回）の編集
+function openSession(date){
+  const s = sessions[date] || {};
+  openSheet(`${sheetTop(dayLabel(date))}
+    <label>お店<input id="sesVenue" list="venueOptions" placeholder="例：まねきねこ 渋谷店" value="${esc(s.venue)}"></label>
+    <label>一緒に行った人<input id="sesPeople" list="peopleOptions" placeholder="例：さき、ゆうと（ひとりカラオケなら空欄）" value="${esc(s.people)}"></label>
+    <label>メモ<textarea id="sesMemo" placeholder="フリータイム、喉の調子など">${esc(s.memo)}</textarea></label>
+    <button class="btn pink" data-act="saveSession" data-date="${date}">保存</button>`);
+}
+
+// セトリ提案
+function suggest(){
+  if (!songs.length) { alert('まず曲を登録してね'); return; }
+  const pool = songs.map(s => {
+    const st = stats[s.key]; let w = 1, why = '';
+    if (s.want) { w = 3; why = '🆕 歌いたい曲'; }
+    else if (st && daysSince(st.last) >= 30) { w = 2.2; why = `⏳ ${daysSince(st.last)}日ぶり`; }
+    else if (st?.fav) { w = 1.8; why = '⭐ ベストテイクあり'; }
+    else if (st?.best >= 90) { w = 1.6; why = '💯 得意曲'; }
+    else if (!st) { w = 1.4; why = '🎙 まだ録音なし'; }
+    else why = `${st.count}回歌ってる`;
+    return {s, w, why};
+  });
+  const pick = [];
+  while (pick.length < 5 && pool.length) {
+    let r = Math.random() * pool.reduce((a,p) => a + p.w, 0), i = 0;
+    while ((r -= pool[i].w) > 0 && i < pool.length - 1) i++;
+    pick.push(pool.splice(i, 1)[0]);
+  }
+  openSheet(`${sheetTop('🎲 今日のセトリ')}
+    <div class="day"><ul class="list">${pick.map(({s, why}) => `<li class="item">
+      <div class="main" data-song="${esc(s.key)}"><div class="t">${esc(s.title)}</div>
+      <div class="s">${esc(s.artist || '—')}${s.key ? ' · キー' + esc(s.key) : ''} · ${why}</div></div>
+      <button class="pill" data-singsong="${esc(s.key)}">🎤 歌う</button></li>`).join('')}</ul></div>
+    <button class="btn" data-act="suggest">🔄 もう一回</button>`);
+}
+
+/* =========================================================
+   シェア画像
+   ========================================================= */
+async function shareDay(date){
+  const list = getList('day:' + date), s = sessions[date] || {};
+  const shown = list.slice(0, 12), more = list.length - shown.length;
+  const W = 1080, rowH = 96, top = 330;
+  const H = top + shown.length * rowH + (more ? 70 : 0) + 130;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  const F = (w, px) => `${w} ${px}px -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif`;
+  const fit = (t, maxW) => { if (c.measureText(t).width <= maxW) return t; while (t && c.measureText(t + '…').width > maxW) t = t.slice(0, -1); return t + '…'; };
+  const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#1d1630'); g.addColorStop(1, '#43204f');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#ff4f9a'; c.font = F(700, 34); c.fillText('🎤 KARAOKE SETLIST', 80, 120);
+  c.fillStyle = '#ffffff'; c.font = F(800, 72); c.fillText(dayLabel(date), 80, 210);
+  c.fillStyle = '#c9bfe6'; c.font = F(500, 32);
+  c.fillText(fit([s.venue ? '📍 ' + s.venue : '', s.people ? '👥 ' + s.people : ''].filter(Boolean).join('   ') || `${list.length}曲歌ったよ`, W - 160), 80, 270);
+  shown.forEach((r, i) => {
+    const y = top + i * rowH;
+    c.fillStyle = 'rgba(255,255,255,.06)'; c.beginPath(); c.roundRect(60, y, W - 120, rowH - 14, 22); c.fill();
+    c.fillStyle = '#ff4f9a'; c.font = F(800, 34); c.textAlign = 'center'; c.fillText(String(i + 1), 115, y + 54); c.textAlign = 'left';
+    const scoreW = r.score != null ? 170 : 0;
+    c.fillStyle = '#fff'; c.font = F(700, 36); c.fillText(fit((r.fav ? '★ ' : '') + r.title, W - 330 - scoreW), 165, y + 44);
+    c.fillStyle = '#a59cc0'; c.font = F(400, 26); c.fillText(fit(r.artist || '', W - 330 - scoreW), 165, y + 74);
+    if (r.score != null) { c.fillStyle = '#ffc94d'; c.font = F(800, 40); c.textAlign = 'right'; c.fillText(String(r.score), W - 95, y + 58); c.textAlign = 'left'; }
+  });
+  let fy = top + shown.length * rowH;
+  if (more) { c.fillStyle = '#a59cc0'; c.font = F(500, 30); c.fillText(`ほか ${more} 曲`, 80, fy + 40); fy += 70; }
+  const total = list.reduce((a,r) => a + playDur(r), 0);
+  const sc = list.filter(r => r.score != null).map(r => r.score);
+  c.fillStyle = '#c9bfe6'; c.font = F(600, 30);
+  c.fillText(`${list.length}曲 · ${Math.round(total/60)}分${sc.length ? ' · 最高 ' + Math.max(...sc) + '点' : ''}`, 80, fy + 70);
+  const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+  const file = new File([blob], `setlist-${date}.png`, {type:'image/png'});
+  if (navigator.canShare?.({files:[file]})) { try { await navigator.share({files:[file]}); return; } catch(e) { if (e.name === 'AbortError') return; } }
+  download(blob, file.name);
+}
+
+/* =========================================================
+   バックアップ / 復元
+   形式: "KRLG" + ヘッダ長(4byte) + JSONヘッダ + 音声データ連結
+   ========================================================= */
+async function exportBackup(){
+  const audios = await getAll('audio');
+  let offset = 0;
+  const meta = audios.map(a => { const m = {id:a.id, mime:a.mime, offset, length:a.data.byteLength}; offset += a.data.byteLength; return m; });
+  const header = new TextEncoder().encode(JSON.stringify({
+    app:'karaoke-log', v:1, exportedAt:Date.now(),
+    recordings: await getAll('recordings'), songs: await getAll('songs'), sessions: await getAll('sessions'), audio: meta
+  }));
+  const head = new Uint8Array(8); head.set([75,82,76,71]); new DataView(head.buffer).setUint32(4, header.length);
+  download(new Blob([head, header, ...audios.map(a => a.data)], {type:'application/octet-stream'}), `karaoke-backup-${dayKey(Date.now())}.krlg`);
+}
+async function importBackup(file){
+  try {
+    const buf = await file.arrayBuffer(), u = new Uint8Array(buf);
+    if (String.fromCharCode(...u.subarray(0, 4)) !== 'KRLG') throw new Error('バックアップファイルではありません');
+    const len = new DataView(buf).getUint32(4);
+    const h = JSON.parse(new TextDecoder().decode(u.subarray(8, 8 + len)));
+    const base = 8 + len;
+    if (!confirm(`録音 ${h.recordings.length}件・曲 ${h.songs.length}件を読み込む？\n（同じデータは上書き、それ以外は残ります）`)) return;
+    await putMany('audio', h.audio.map(a => ({id:a.id, mime:a.mime, data:buf.slice(base + a.offset, base + a.offset + a.length)})));
+    await putMany('recordings', h.recordings);
+    await putMany('songs', h.songs);
+    await putMany('sessions', h.sessions || []);
+    await refresh();
+    alert('復元できたよ！');
+  } catch(e) { alert('復元できませんでした：' + e.message); }
+}
+$('#importFile').onchange = e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ''; };
+
+/* =========================================================
+   イベント
+   ========================================================= */
+function switchTab(t){
+  $$('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === t));
+  $$('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-' + t));
+  window.scrollTo(0, 0);
+}
+$$('nav button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+$('#songSearch').oninput = renderSongs;
+$('#songSort').onchange = renderSongs;
+
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-play],[data-playlist],[data-fav],[data-edit],[data-session],[data-shareimg],[data-song],[data-singsong],[data-smode],[data-act]');
+  if (!t) return;
+  const d = t.dataset;
+  if (t.tagName === 'BUTTON' && t.closest('summary')) e.preventDefault();
+  if (d.play) {
+    const list = getList(t.closest('[data-list]').dataset.list);
+    playQueue(list, list.findIndex(r => r.id === d.play));
+  }
+  else if (d.playlist) playQueue(getList(d.playlist), 0);
+  else if (d.fav) {
+    const r = recs.find(x => x.id === d.fav); r.fav = !r.fav; await put('recordings', r);
+    if (curMeta?.id === r.id) curMeta.fav = r.fav;
+    const songOpen = $('#sheetBody [data-list^="song:"]');
+    await refresh();
+    if (songOpen) openSong(songOpen.dataset.list.slice(5));
+  }
+  else if (d.edit) openEdit(d.edit);
+  else if (d.session) openSession(d.session);
+  else if (d.shareimg) shareDay(d.shareimg);
+  else if (d.singsong) singSong(d.singsong);
+  else if (d.song) openSong(d.song);
+  else if (d.smode) { songMode = d.smode; renderSongs(); }
+  else switch (d.act) {
+    case 'close': closeSheet(); break;
+    case 'saveEdit': saveEdit(d.id); break;
+    case 'trimPreview': previewTrim(d.id, false); break;
+    case 'trimEndPreview': previewTrim(d.id, true); break;
+    case 'dl': {
+      const r = recs.find(x => x.id === d.id), a = await get('audio', d.id);
+      const ext = /mp4/.test(a.mime) ? 'm4a' : /ogg/.test(a.mime) ? 'ogg' : 'webm';
+      download(new Blob([a.data], {type:a.mime}), `${r.date}_${r.title}.${ext}`); break;
+    }
+    case 'delRec': {
+      const r = recs.find(x => x.id === d.id);
+      if (!confirm(`「${r.title}」の録音を削除する？`)) return;
+      await del('recordings', r.id); await del('audio', r.id);
+      if (curMeta?.id === r.id) { audio.pause(); $('#player').hidden = true; curMeta = null; }
+      closeSheet(); refresh(); break;
+    }
+    case 'saveSong': saveSong(d.key); break;
+    case 'toggleWant': {
+      const s = {...(await get('songs', d.key) || songs.find(x => x.key === d.key))};
+      s.want = !s.want; delete s.virtual; await put('songs', s); closeSheet(); refresh(); break;
+    }
+    case 'delSong': {
+      const has = stats[d.key];
+      if (!confirm(has ? '録音がある曲はリストに残ります（キー・メモはリセット）。削除する？' : 'リストから削除する？')) return;
+      await del('songs', d.key); closeSheet(); refresh(); break;
+    }
+    case 'saveSession': {
+      await put('sessions', {date:d.date, venue:$('#sesVenue').value.trim(), people:$('#sesPeople').value.trim(), memo:$('#sesMemo').value.trim()});
+      closeSheet(); refresh(); break;
+    }
+    case 'addSong': {
+      const title = $('#newSong').value.trim(); if (!title) return;
+      const k = songKey(title);
+      const s = await get('songs', k) || {key:k, title, artist:''};
+      if (stats[k] && songMode === 'want') { alert('この曲はもう歌ったことがあるよ'); return; }
+      s.want = songMode === 'want';
+      if ($('#newArtist').value.trim()) s.artist = $('#newArtist').value.trim();
+      await put('songs', s);
+      $('#newSong').value = ''; $('#newArtist').value = ''; refresh(); break;
+    }
+    case 'suggest': suggest(); break;
+    case 'export': exportBackup(); break;
+    case 'import': $('#importFile').click(); break;
+  }
+});
+
+(async () => {
+  db = await openDB();
+  try { await navigator.storage?.persist?.(); } catch {}
+  refresh();
+})();
+</script>
+</body>
+</html>
