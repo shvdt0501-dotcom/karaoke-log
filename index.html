@@ -268,7 +268,7 @@ function getList(name){
 /* =========================================================
    録音
    ========================================================= */
-let rec, stream, chunks = [], t0 = 0, timerId, wakeLock;
+let rec, stream, chunks = [], t0 = 0, timerId, wakeLock, actx;
 function pickMime(){
   for (const m of ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg'])
     if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
@@ -278,11 +278,24 @@ async function startRec(){
   const title = $('#recTitle').value.trim();
   if (!title) { alert('曲名を入れてね'); $('#recTitle').focus(); return; }
   if (!window.MediaRecorder) { alert('このブラウザは録音に対応していません'); return; }
+  // タップ直後にAudioContextを作っておく（iPhoneはタップ中でないと動かないことがある）
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch { actx = null; }
   try {
-    stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
-  } catch(e) { alert('マイクが使えません：' + e.message); return; }
+    stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1}});
+  } catch(e) { try { actx?.close(); } catch {} actx = null; alert('マイクが使えません：' + e.message); return; }
+  // マイクの音（左チャンネル）を左右両方に流してから録音 → 両耳から聞こえる
+  let recStream = stream;
+  if (actx) {
+    try {
+      const src = actx.createMediaStreamSource(stream);
+      const sp = actx.createChannelSplitter(2), mg = actx.createChannelMerger(2), dest = actx.createMediaStreamDestination();
+      src.connect(sp); sp.connect(mg, 0, 0); sp.connect(mg, 0, 1); mg.connect(dest);
+      recStream = dest.stream;
+    } catch { recStream = stream; }
+  }
   const mime = pickMime();
-  rec = new MediaRecorder(stream, mime ? {mimeType:mime} : undefined);
+  rec = new MediaRecorder(recStream, mime ? {mimeType:mime} : undefined);
+  rec._stream = recStream;
   chunks = [];
   rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   rec.onstop = saveRec;
@@ -297,6 +310,8 @@ function stopRec(){
   rec._dur = (Date.now() - t0) / 1000;
   rec.stop();
   stream.getTracks().forEach(t => t.stop());
+  const rs = rec._stream, ac = actx; actx = null;
+  setTimeout(() => { rs?.getTracks().forEach(t => t.stop()); try { ac?.close(); } catch {} }, 500);
   clearInterval(timerId);
   try { wakeLock?.release(); } catch {} wakeLock = null;
   $('#recBtn').textContent = '● 録音開始'; $('#recBtn').classList.remove('on');
@@ -664,6 +679,7 @@ function openEdit(id, afterRec){
       <button class="btn ghost" data-act="trimEndPreview" data-id="${id}">▶ 終わり5秒</button></div>
       <p class="hint">元の音声は消えないので、いつでも戻せます</p>
     </div>
+    ${!r.monoFixed && r.mime !== 'audio/wav' ? `<button class="btn ghost" data-act="fixMono" data-id="${id}">🎧 片耳しか聞こえない → 左右をそろえる</button>` : ''}
     <button class="btn pink" data-act="saveEdit" data-id="${id}">保存</button>
     ${afterRec ? `<button class="btn ghost" data-act="close">あとで</button>` : ''}
     <div class="grid2"><button class="btn ghost" data-act="dl" data-id="${id}">⬇ 音声を保存</button>
@@ -694,6 +710,49 @@ async function saveEdit(id){
   }
   if (curMeta?.id === id) Object.assign(curMeta, nr);
   closeSheet(); refresh();
+}
+/* ---------- 片耳しか聞こえない録音を左右そろえる（モノラル化） ---------- */
+function encodeWav(buf){
+  const ch = buf.getChannelData(0), n = ch.length, sr = buf.sampleRate;
+  const ab = new ArrayBuffer(44 + n * 2), v = new DataView(ab);
+  const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0,'RIFF'); v.setUint32(4, 36 + n*2, true); w(8,'WAVE'); w(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  w(36,'data'); v.setUint32(40, n*2, true);
+  for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, ch[i])); v.setInt16(44 + i*2, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
+  return ab;
+}
+async function fixMono(id){
+  const a = await get('audio', id), r = await get('recordings', id);
+  if (!a || !r) return false;
+  const Ctx = window.AudioContext || window.webkitAudioContext, tmp = new Ctx();
+  let dec;
+  try { dec = await tmp.decodeAudioData(a.data.slice(0)); } finally { try { tmp.close(); } catch {} }
+  if (dec.numberOfChannels < 2) return 'mono';
+  // 音が大きい方のチャンネルを使う
+  const rms = c => { const d = dec.getChannelData(c); let s = 0; for (let i = 0; i < d.length; i += 64) s += d[i] * d[i]; return s; };
+  const use = rms(1) > rms(0) ? 1 : 0;
+  const SR = 32000, len = Math.ceil(dec.duration * SR);
+  const off = new OfflineAudioContext(1, len, SR);
+  const mono = off.createBuffer(1, dec.length, dec.sampleRate);
+  mono.copyToChannel(dec.getChannelData(use), 0);
+  const src = off.createBufferSource(); src.buffer = mono; src.connect(off.destination); src.start();
+  const out = await off.startRendering();
+  await put('audio', {id, data:encodeWav(out), mime:'audio/wav'});
+  await put('recordings', {...r, mime:'audio/wav', duration:out.duration, monoFixed:true});
+  return true;
+}
+async function runFixMono(ids){
+  const btns = $$('[data-act="fixMono"],[data-act="fixMonoDay"]');
+  btns.forEach(b => { b.disabled = true; b.textContent = '🎧 変換中…（少し待ってね）'; });
+  let ok = 0, skip = 0, ng = 0;
+  for (const id of ids) {
+    try { const res = await fixMono(id); res === true ? ok++ : res === 'mono' ? skip++ : ng++; } catch { ng++; }
+  }
+  if (ids.includes(curMeta?.id)) { audio.pause(); $('#player').hidden = true; curMeta = null; }
+  closeSheet(); await refresh();
+  alert(ng ? `${ok}曲そろえたよ（${ng}曲は変換できませんでした）` : ok ? `${ok}曲、両耳から聞こえるようにしたよ🎧` : 'もともと両耳から聞こえる録音でした');
 }
 function previewTrim(id, fromEnd){
   const r = recs.find(x => x.id === id); if (!r) return;
@@ -763,7 +822,9 @@ function openSession(date){
     <label>お店<input id="sesVenue" list="venueOptions" placeholder="例：まねきねこ 渋谷店" value="${esc(s.venue)}"></label>
     <label>一緒に行った人<input id="sesPeople" list="peopleOptions" placeholder="例：さき、ゆうと（ひとりカラオケなら空欄）" value="${esc(s.people)}"></label>
     <label>メモ<textarea id="sesMemo" placeholder="フリータイム、喉の調子など">${esc(s.memo)}</textarea></label>
-    <button class="btn pink" data-act="saveSession" data-date="${date}">保存</button>`);
+    <button class="btn pink" data-act="saveSession" data-date="${date}">保存</button>
+    <button class="btn ghost" data-act="fixMonoDay" data-date="${date}">🎧 この日の録音の左右をまとめてそろえる</button>
+    <p class="hint">片耳からしか聞こえない録音を、両耳から聞こえるように変換します</p>`);
 }
 
 // セトリ提案
@@ -907,7 +968,7 @@ document.addEventListener('click', async e => {
     case 'trimEndPreview': previewTrim(d.id, true); break;
     case 'dl': {
       const r = recs.find(x => x.id === d.id), a = await get('audio', d.id);
-      const ext = /mp4/.test(a.mime) ? 'm4a' : /ogg/.test(a.mime) ? 'ogg' : 'webm';
+      const ext = /mp4/.test(a.mime) ? 'm4a' : /ogg/.test(a.mime) ? 'ogg' : /wav/.test(a.mime) ? 'wav' : /mpeg/.test(a.mime) ? 'mp3' : 'webm';
       download(new Blob([a.data], {type:a.mime}), `${r.date}_${r.title}.${ext}`); break;
     }
     case 'delRec': {
@@ -963,6 +1024,8 @@ document.addEventListener('click', async e => {
     case 'export': exportBackup(); break;
     case 'import': $('#importFile').click(); break;
     case 'importAudio': $('#audioFile').click(); break;
+    case 'fixMono': runFixMono([d.id]); break;
+    case 'fixMonoDay': runFixMono(getList('day:' + d.date).filter(r => !r.monoFixed && r.mime !== 'audio/wav').map(r => r.id)); break;
     case 'foldAll': $$('details[data-fold]').forEach(el => el.open = d.open === '1'); break;
   }
 });
