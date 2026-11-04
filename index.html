@@ -102,6 +102,9 @@ nav button.active{color:var(--acc)}
       <button id="recBtn" class="rec">● 録音開始</button>
       <p class="hint">録音中は画面を開いたままにしてね（画面ロックやアプリ切替で止まることがあります）</p>
     </div>
+    <button class="btn ghost" data-act="importAudio">📂 録音ファイルを取り込む</button>
+    <p class="hint">ボイスメモなどの音声ファイル（複数OK）を追加できます</p>
+    <input type="file" id="audioFile" accept="audio/*,.m4a,.mp3,.wav,.aac" multiple hidden>
     <h2>今日の録音</h2>
     <div id="todayBox"></div>
   </section>
@@ -324,6 +327,36 @@ $('#recTitle').addEventListener('input', () => {
     s.memo ? `📝 ${s.memo}` : ''
   ].filter(Boolean).join(' · ') : '';
 });
+/* ---------- 音声ファイルの取り込み ---------- */
+function audioDuration(blob){
+  return new Promise(res => {
+    const a = new Audio(), u = URL.createObjectURL(blob); let fin = false;
+    const done = () => { if (fin) return; fin = true; URL.revokeObjectURL(u); res(isFinite(a.duration) ? a.duration : 0); };
+    a.preload = 'metadata'; a.onloadedmetadata = done; a.onerror = done;
+    setTimeout(done, 8000); a.src = u;
+  });
+}
+async function importAudioFiles(files){
+  const ids = [];
+  for (const f of files) {
+    const createdAt = f.lastModified || Date.now();
+    const id = createdAt + '-' + Math.random().toString(36).slice(2, 7);
+    const title = f.name.replace(/\.[^.]+$/, '') || '取り込んだ録音';
+    const mime = f.type || (/\.mp3$/i.test(f.name) ? 'audio/mpeg' : /\.wav$/i.test(f.name) ? 'audio/wav' : 'audio/mp4');
+    const duration = await audioDuration(f);
+    await put('audio', {id, data: await f.arrayBuffer(), mime});
+    await put('recordings', {id, date:dayKey(createdAt), createdAt, title, artist:'', key:'', mime, duration,
+      score:null, machine:'', memo:'', fav:false, trimStart:0, trimEnd:null, imported:true});
+    await ensureSong(title, '', '');
+    ids.push(id);
+  }
+  await refresh();
+  if (ids.length === 1) openEdit(ids[0], 'import');
+  else if (ids.length) { alert(`${ids.length}件取り込んだよ！\n日付はファイルの日付になっているので、違っていたら✏️から直してね`); switchTab('play'); }
+}
+$('#audioFile').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) importAudioFiles(fs); };
+const toLocalInput = ts => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
 function singSong(k){
   const s = songs.find(x => x.key === k); if (!s) return;
   closeSheet();
@@ -524,9 +557,12 @@ const sheetTop = title => `<div class="sheetTop"><h3>${title}</h3><button class=
 function openEdit(id, afterRec){
   const r = recs.find(x => x.id === id); if (!r) return;
   const dur = r.duration || 0, ts = r.trimStart || 0, te = r.trimEnd || dur;
-  openSheet(`${sheetTop(afterRec ? '保存したよ！🎉' : '録音を編集')}
-    ${afterRec ? '<p class="hint" style="margin:-6px 0 12px">点数やメモを残しておく？</p>' : ''}
+  const imp = afterRec === 'import';
+  openSheet(`${sheetTop(imp ? '取り込んだよ！🎉' : afterRec ? '保存したよ！🎉' : '録音を編集')}
+    ${imp ? '<p class="hint" style="margin:-6px 0 12px">曲名と歌った日時を確認してね（日時はファイルの日付が入っています）</p>'
+      : afterRec ? '<p class="hint" style="margin:-6px 0 12px">点数やメモを残しておく？</p>' : ''}
     <label>曲名<input id="eTitle" list="songOptions" value="${esc(r.title)}"></label>
+    <label>歌った日時<input type="datetime-local" id="eWhen" value="${toLocalInput(r.createdAt)}"></label>
     <label>アーティスト<input id="eArtist" list="artistOptions" value="${esc(r.artist)}"></label>
     <div class="grid3">
       <label>点数<input id="eScore" inputmode="decimal" placeholder="例：92.345" value="${r.score ?? ''}"></label>
@@ -561,7 +597,9 @@ async function saveEdit(id){
   const title = $('#eTitle').value.trim(); if (!title) { alert('曲名を入れてね'); return; }
   const sc = parseFloat($('#eScore').value.replace(/[^\d.]/g, ''));
   const dur = r.duration || 0, s = +$('#eTs').value, e = +$('#eTe').value;
-  const nr = {...r, title, artist:$('#eArtist').value.trim(), key:$('#eKey').value.trim(),
+  const when = new Date($('#eWhen').value).getTime();
+  const createdAt = isNaN(when) ? r.createdAt : when;
+  const nr = {...r, createdAt, date:dayKey(createdAt), title, artist:$('#eArtist').value.trim(), key:$('#eKey').value.trim(),
     score: isNaN(sc) ? null : sc, machine:$('#eMachine').value, memo:$('#eMemo').value.trim(), fav:$('#eFav').checked,
     trimStart: s < 0.3 ? 0 : s, trimEnd: e >= dur - 0.3 ? null : e};
   await put('recordings', nr);
@@ -822,6 +860,7 @@ document.addEventListener('click', async e => {
     case 'suggest': suggest(); break;
     case 'export': exportBackup(); break;
     case 'import': $('#importFile').click(); break;
+    case 'importAudio': $('#audioFile').click(); break;
   }
 });
 
