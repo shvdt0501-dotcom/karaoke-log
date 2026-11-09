@@ -79,6 +79,14 @@ canvas.graph{width:100%;height:170px;display:block;background:#1b1729;border-rad
 .ctrl{display:flex;justify-content:center;gap:28px}
 .ctrl button{background:none;font-size:24px;padding:2px 8px}
 #playBtn{font-size:30px}
+[hidden]{display:none!important}
+.item.done .t,.item.done .s{opacity:.45}.item.done .t{text-decoration:line-through}
+.num{display:inline-block;min-width:22px;color:var(--acc);font-weight:800;margin-right:4px}
+.ib:disabled{opacity:.2}
+.chk{font-size:20px;padding:4px}
+.planfoot{display:flex;justify-content:flex-end;gap:16px;padding:10px 12px;list-style:none}
+.planfoot button{background:none;color:var(--sub);font-size:12px}
+.seg button{font-size:13px}
 summary.dayh{cursor:pointer}
 .chev{display:inline-block;color:var(--sub);font-size:22px;line-height:1;transition:transform .2s;flex-shrink:0}
 details[open]>summary .chev{transform:rotate(90deg)}
@@ -116,6 +124,7 @@ nav button.active{color:var(--acc)}
     <button class="btn ghost" data-act="importAudio">📂 録音ファイルを取り込む</button>
     <p class="hint">ボイスメモなどの音声ファイル（複数OK）を追加できます</p>
     <input type="file" id="audioFile" accept="audio/*,.m4a,.mp3,.wav,.aac" multiple hidden>
+    <div id="planBox"></div>
     <h2>今日の録音</h2>
     <div id="todayBox"></div>
   </section>
@@ -125,16 +134,16 @@ nav button.active{color:var(--acc)}
 
   <!-- 曲 -->
   <section id="tab-songs" class="tab">
-    <div class="seg"><button data-smode="sung" class="active">歌った曲</button><button data-smode="want">歌いたい曲</button></div>
+    <div class="seg"><button data-smode="sung" class="active">歌った曲</button><button data-smode="want">歌いたい曲</button><button data-smode="plan">📋 次回セトリ</button></div>
     <button class="btn pink" data-act="suggest" style="margin:0 0 10px">🎲 今日のセトリを提案</button>
-    <div class="row">
+    <div class="row" id="songTools">
       <input id="songSearch" placeholder="🔍 検索">
       <select id="songSort" style="width:auto">
         <option value="last">最近順</option><option value="count">回数順</option><option value="best">点数順</option><option value="title">曲名順</option>
       </select>
     </div>
     <div class="row">
-      <input id="newSong" placeholder="曲名を追加">
+      <input id="newSong" list="songOptions" placeholder="曲名を追加" autocomplete="off">
       <input id="newArtist" list="artistOptions" placeholder="アーティスト">
       <button data-act="addSong">追加</button>
     </div>
@@ -233,6 +242,20 @@ const del = (st, k) => tx(st, 'readwrite', s => s.delete(k));
 let recs = [], songs = [], sessions = {}, stats = {};
 let songMode = 'sung';
 
+// 旧バージョンで「キー」が曲IDを上書きしてしまったデータを修復
+async function repairSongs(){
+  const all = await getAll('songs');
+  const bad = all.filter(s => s.title && s.key !== songKey(s.title));
+  for (const s of bad) {
+    const k = songKey(s.title), pitch = s.key;
+    const good = all.find(x => x.key === k) || {key:k, title:s.title, artist:''};
+    const m = {...good, artist: good.artist || s.artist || '', pitch: s.pitch || pitch,
+      memo: good.memo || s.memo || '', machine: good.machine || s.machine || ''};
+    if (s.want === false) m.want = false;
+    await put('songs', m);
+    if (!all.some(x => x !== s && x.key === s.key && songKey(x.title) === s.key)) await del('songs', s.key);
+  }
+}
 async function refresh(){
   recs = await getAll('recordings');
   const stored = await getAll('songs');
@@ -327,6 +350,8 @@ async function saveRec(){
   await put('recordings', {id, date, createdAt:t0, title, artist, key, mime:type, duration:rec._dur,
     score:null, machine: song?.machine || lsGet('lastMachine') || '', memo:'', fav:false, trimStart:0, trimEnd:null});
   await ensureSong(title, artist, key);
+  const ps = await get('songs', songKey(title));
+  if (ps && ps.plan != null && !ps.planDone) { ps.planDone = true; await put('songs', ps); }
   $('#recTitle').value = ''; $('#recArtist').value = ''; $('#recKey').value = '';
   $('#timer').textContent = '00:00'; $('#songHint').textContent = '';
   await refresh();
@@ -337,7 +362,7 @@ async function ensureSong(title, artist, key){
   const s = await get('songs', k) || {key:k, title, artist:''};
   s.want = false;
   if (artist) s.artist = artist;
-  if (key) s.key = key;
+  if (key) s.pitch = key;
   delete s.virtual;
   await put('songs', s);
 }
@@ -346,7 +371,7 @@ $('#recTitle').addEventListener('input', () => {
   const s = songs.find(x => x.key === songKey($('#recTitle').value));
   const st = s && stats[s.key];
   if (s?.artist && !$('#recArtist').value) $('#recArtist').value = s.artist;
-  if (s?.key && !$('#recKey').value) $('#recKey').value = s.key;
+  if (s?.pitch && !$('#recKey').value) $('#recKey').value = s.pitch;
   $('#songHint').textContent = s ? [
     st ? `${st.count}回目` : 'はじめて！',
     st?.best != null ? `ベスト ${st.best}` : '',
@@ -403,7 +428,7 @@ const toLocalInput = ts => { const d = new Date(ts); return `${d.getFullYear()}-
 function singSong(k){
   const s = songs.find(x => x.key === k); if (!s) return;
   closeSheet();
-  $('#recTitle').value = s.title; $('#recArtist').value = s.artist || ''; $('#recKey').value = s.key || '';
+  $('#recTitle').value = s.title; $('#recArtist').value = s.artist || ''; $('#recKey').value = s.pitch || '';
   $('#recTitle').dispatchEvent(new Event('input'));
   switchTab('rec');
 }
@@ -515,7 +540,7 @@ function recItem(r){
     <button class="ib" data-edit="${r.id}">✏️</button></li>`;
 }
 function renderAll(){
-  renderToday(); renderPlaylists(); renderSongs(); renderStats(); renderDatalists(); markPlaying();
+  renderToday(); renderPlanBox(); renderPlaylists(); renderSongs(); renderStats(); renderDatalists(); markPlaying();
 }
 function renderToday(){
   const k = dayKey(Date.now()), list = getList('day:' + k);
@@ -560,8 +585,53 @@ function renderPlaylists(){
   }).join('');
   $('#playlists').innerHTML = html || '<p class="empty">録音するとここに日付ごとのプレイリストができるよ</p>';
 }
+/* ---------- 次回のセトリ ---------- */
+const planList = () => songs.filter(s => s.plan != null).sort((a,b) => a.plan - b.plan);
+async function updSong(k, fn){
+  const s = {...(await get('songs', k) || songs.find(x => x.key === k))};
+  if (!s.key) return;
+  delete s.virtual; fn(s); await put('songs', s);
+}
+async function addToPlan(keys){
+  let mx = Math.max(0, ...planList().map(s => s.plan));
+  for (const k of keys) await updSong(k, s => { if (s.plan == null) { s.plan = ++mx; s.planDone = false; } });
+}
+async function movePlan(k, dir){
+  const list = planList(), i = list.findIndex(s => s.key === k), j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  const a = list[i].plan, b = list[j].plan;
+  await updSong(list[i].key, s => s.plan = b);
+  await updSong(list[j].key, s => s.plan = a);
+}
+const songSub = s => { const x = stats[s.key] || {}; return [s.artist || '—', s.pitch ? 'キー' + s.pitch : '', x.best != null ? 'ベスト' + x.best : ''].filter(Boolean).join(' · '); };
+function renderPlanView(){
+  const list = planList(), done = list.filter(s => s.planDone).length;
+  $('#songCount').textContent = list.length ? `次回のセトリ：${list.length}曲（歌った ${done}曲）` : '';
+  $('#songList').innerHTML = list.length ? list.map((s, i) => `<li class="item ${s.planDone ? 'done' : ''}">
+      <button class="ib chk" data-plandone="${esc(s.key)}">${s.planDone ? '✅' : '⬜'}</button>
+      <div class="main" data-song="${esc(s.key)}"><div class="t"><span class="num">${i+1}</span>${esc(s.title)}</div><div class="s">${esc(songSub(s))}</div>
+      ${s.memo ? `<div class="memo">📝 ${esc(s.memo)}</div>` : ''}</div>
+      <button class="ib" data-planmove="${esc(s.key)}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="ib" data-planmove="${esc(s.key)}" data-dir="1" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
+      <button class="ib" data-planrm="${esc(s.key)}">✕</button></li>`).join('')
+    + `<li class="planfoot"><button data-act="planClear" data-done="1">歌った曲を外す</button><button data-act="planClear" data-done="0">全部クリア</button></li>`
+    : '<li class="empty">次のカラオケで歌いたい曲を追加してね<br><small>曲名を入れて「追加」、または曲の詳細や🎲提案からも追加できるよ</small></li>';
+}
+function renderPlanBox(){
+  const list = planList();
+  if (!list.length) { $('#planBox').innerHTML = ''; return; }
+  const done = list.filter(s => s.planDone).length;
+  $('#planBox').innerHTML = `<h2>📋 今日歌う予定 <span class="cnt">${done}/${list.length}</span></h2>
+    <div class="day"><ul class="list">${list.map((s, i) => `<li class="item ${s.planDone ? 'done' : ''}">
+      <div class="main" data-planpick="${esc(s.key)}"><div class="t"><span class="num">${s.planDone ? '✓' : i+1}</span>${esc(s.title)}</div><div class="s">${esc(songSub(s))}</div>
+      ${s.memo ? `<div class="memo">📝 ${esc(s.memo)}</div>` : ''}</div>
+      ${s.planDone ? '' : `<button class="pill" data-planpick="${esc(s.key)}">🎤</button>`}</li>`).join('')}</ul></div>
+    <p class="hint" style="margin:-4px 0 0">タップすると曲名・キーが入るよ。録音すると✓がつきます</p>`;
+}
 function renderSongs(){
   $$('[data-smode]').forEach(b => b.classList.toggle('active', b.dataset.smode === songMode));
+  $('#songTools').hidden = songMode === 'plan';
+  if (songMode === 'plan') { $('#newSong').placeholder = 'セトリに追加する曲'; renderPlanView(); return; }
   const q = $('#songSearch').value.trim().toLowerCase(), sort = $('#songSort').value;
   const st = k => stats[k] || {};
   let list = songs.filter(s => (songMode === 'want') === !!s.want)
@@ -576,12 +646,12 @@ function renderSongs(){
   $('#newSong').placeholder = songMode === 'want' ? '歌いたい曲を追加' : '歌った曲を追加';
   $('#songList').innerHTML = list.length ? list.map(s => {
     const x = st(s.key);
-    const sub = [s.artist || '—', s.key ? 'キー' + s.key : '', s.machine || '', x.last ? '最後 ' + x.last.slice(5).replace('-','/') : ''].filter(Boolean).join(' · ');
+    const sub = [s.artist || '—', s.pitch ? 'キー' + s.pitch : '', s.machine || '', x.last ? '最後 ' + x.last.slice(5).replace('-','/') : ''].filter(Boolean).join(' · ');
     return `<li class="item"><div class="main" data-song="${esc(s.key)}">
       <div class="t">${x.fav ? '<span class="star">★</span> ' : ''}${esc(s.title)}</div><div class="s">${esc(sub)}</div>
       ${s.memo ? `<div class="memo">📝 ${esc(s.memo)}</div>` : ''}</div>
       ${x.best != null ? `<span class="score">${x.best}</span>` : ''}
-      ${songMode === 'want' ? `<button class="ib" data-singsong="${esc(s.key)}">🎤</button>` : `<span class="cnt">${x.count ? x.count + '回' : '記録なし'}</span>`}
+      ${songMode === 'want' ? `<button class="ib ${s.plan != null ? 'on' : ''}" data-plantoggle="${esc(s.key)}">${s.plan != null ? '📋✓' : '📋＋'}</button><button class="ib" data-singsong="${esc(s.key)}">🎤</button>` : `<span class="cnt">${x.count ? x.count + '回' : '記録なし'}</span>`}
     </li>`;
   }).join('') : '<li class="empty">曲がありません</li>';
 }
@@ -769,12 +839,13 @@ function openSong(k){
     ${scored.length ? `<h2 style="margin-top:0">点数の推移</h2><canvas class="graph" id="graph"></canvas>` : ''}
     <label>アーティスト<input id="sArtist" list="artistOptions" value="${esc(s.artist)}"></label>
     <div class="grid2">
-      <label>自分に合うキー<input id="sKey" placeholder="例：-2、原曲" value="${esc(s.key)}"></label>
+      <label>自分に合うキー<input id="sKey" placeholder="例：-2、原曲" value="${esc(s.pitch)}"></label>
       <label>よく使う機種<select id="sMachine">${machineOpts(s.machine)}</select></label>
     </div>
     <label>メモ<textarea id="sMemo" placeholder="原曲キーだと高い、2番から入る、など">${esc(s.memo)}</textarea></label>
     <button class="btn" data-act="saveSong" data-key="${esc(k)}">保存</button>
     <button class="btn pink" data-singsong="${esc(k)}">🎤 この曲を歌う</button>
+    <button class="btn ghost" data-plantoggle="${esc(k)}">${s.plan != null ? '📋 次回のセトリから外す' : '📋 次回のセトリに追加'}</button>
     ${!st ? `<button class="btn ghost" data-act="toggleWant" data-key="${esc(k)}">${s.want ? '「歌った曲」に移動' : '「歌いたい曲」に移動'}</button>` : ''}
     ${list.length ? `<h2>録音（${list.length}）</h2><div class="day"><ul class="list" data-list="song:${esc(k)}">${list.map(recItem).join('')}</ul></div>` : ''}
     <button class="btn danger" data-act="delSong" data-key="${esc(k)}">リストから削除</button>`);
@@ -809,7 +880,7 @@ function drawGraph(cv, pts){
 }
 async function saveSong(k){
   const base = await get('songs', k) || songs.find(x => x.key === k);
-  const s = {...base, artist:$('#sArtist').value.trim(), key:$('#sKey').value.trim(), machine:$('#sMachine').value, memo:$('#sMemo').value.trim()};
+  const s = {...base, artist:$('#sArtist').value.trim(), pitch:$('#sKey').value.trim(), machine:$('#sMachine').value, memo:$('#sMemo').value.trim()};
   delete s.virtual;
   await put('songs', s); closeSheet(); refresh();
 }
@@ -849,8 +920,9 @@ function suggest(){
   openSheet(`${sheetTop('🎲 今日のセトリ')}
     <div class="day"><ul class="list">${pick.map(({s, why}) => `<li class="item">
       <div class="main" data-song="${esc(s.key)}"><div class="t">${esc(s.title)}</div>
-      <div class="s">${esc(s.artist || '—')}${s.key ? ' · キー' + esc(s.key) : ''} · ${why}</div></div>
+      <div class="s">${esc(s.artist || '—')}${s.pitch ? ' · キー' + esc(s.pitch) : ''} · ${why}</div></div>
       <button class="pill" data-singsong="${esc(s.key)}">🎤 歌う</button></li>`).join('')}</ul></div>
+    <button class="btn pink" data-act="planAddMany" data-keys="${esc(JSON.stringify(pick.map(p => p.s.key)))}">📋 この${pick.length}曲を次回のセトリに追加</button>
     <button class="btn" data-act="suggest">🔄 もう一回</button>`);
 }
 
@@ -920,6 +992,7 @@ async function importBackup(file){
     await putMany('recordings', h.recordings);
     await putMany('songs', h.songs);
     await putMany('sessions', h.sessions || []);
+    try { await repairSongs(); } catch {}
     await refresh();
     alert('復元できたよ！');
   } catch(e) { alert('復元できませんでした：' + e.message); }
@@ -939,11 +1012,26 @@ $('#songSearch').oninput = renderSongs;
 $('#songSort').onchange = renderSongs;
 
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-play],[data-playlist],[data-fav],[data-edit],[data-session],[data-shareimg],[data-song],[data-singsong],[data-smode],[data-act]');
+  const t = e.target.closest('[data-play],[data-playlist],[data-fav],[data-edit],[data-session],[data-shareimg],[data-song],[data-singsong],[data-smode],[data-act],[data-plandone],[data-planmove],[data-planrm],[data-planpick],[data-plantoggle]');
   if (!t) return;
   const d = t.dataset;
   if (t.tagName === 'BUTTON' && t.closest('summary')) e.preventDefault();
-  if (d.play) {
+  if (d.plandone) { await updSong(d.plandone, s => s.planDone = !s.planDone); refresh(); }
+  else if (d.planmove) { await movePlan(d.planmove, +d.dir); refresh(); }
+  else if (d.planrm) { await updSong(d.planrm, s => { delete s.plan; delete s.planDone; }); refresh(); }
+  else if (d.planpick) {
+    if (rec && rec.state === 'recording') { alert('録音中は選べないよ。停止してからタップしてね'); return; }
+    singSong(d.planpick);
+  }
+  else if (d.plantoggle) {
+    const s = songs.find(x => x.key === d.plantoggle);
+    if (s?.plan != null) await updSong(d.plantoggle, s => { delete s.plan; delete s.planDone; });
+    else await addToPlan([d.plantoggle]);
+    const inSheet = t.closest('#sheetBody');
+    await refresh();
+    if (inSheet) openSong(d.plantoggle);
+  }
+  else if (d.play) {
     const list = getList(t.closest('[data-list]').dataset.list);
     playQueue(list, list.findIndex(r => r.id === d.play));
   }
@@ -1013,6 +1101,14 @@ document.addEventListener('click', async e => {
     case 'addSong': {
       const title = $('#newSong').value.trim(); if (!title) return;
       const k = songKey(title);
+      if (songMode === 'plan') {
+        const ex = await get('songs', k) || songs.find(x => x.key === k);
+        const s = ex ? {...ex} : {key:k, title, artist:'', want:!stats[k]};
+        delete s.virtual;
+        if ($('#newArtist').value.trim()) s.artist = $('#newArtist').value.trim();
+        await put('songs', s); await refresh(); await addToPlan([k]);
+        $('#newSong').value = ''; $('#newArtist').value = ''; refresh(); break;
+      }
       const s = await get('songs', k) || {key:k, title, artist:''};
       if (stats[k] && songMode === 'want') { alert('この曲はもう歌ったことがあるよ'); return; }
       s.want = songMode === 'want';
@@ -1021,6 +1117,17 @@ document.addEventListener('click', async e => {
       $('#newSong').value = ''; $('#newArtist').value = ''; refresh(); break;
     }
     case 'suggest': suggest(); break;
+    case 'planAddMany': {
+      await addToPlan(JSON.parse(d.keys)); closeSheet(); await refresh();
+      songMode = 'plan'; renderSongs(); break;
+    }
+    case 'planClear': {
+      const done = d.done === '1', list = planList().filter(s => !done || s.planDone);
+      if (!list.length) return;
+      if (!confirm(done ? `歌った${list.length}曲をセトリから外す？` : 'セトリを全部クリアする？（曲リストからは消えません）')) return;
+      for (const s of list) await updSong(s.key, x => { delete x.plan; delete x.planDone; });
+      refresh(); break;
+    }
     case 'export': exportBackup(); break;
     case 'import': $('#importFile').click(); break;
     case 'importAudio': $('#audioFile').click(); break;
@@ -1033,6 +1140,7 @@ document.addEventListener('click', async e => {
 (async () => {
   db = await openDB();
   try { await navigator.storage?.persist?.(); } catch {}
+  try { await repairSongs(); } catch {}
   refresh();
 })();
 </script>
